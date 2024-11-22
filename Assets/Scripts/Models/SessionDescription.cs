@@ -4,6 +4,7 @@ using UnityEngine;
 [Serializable]
 public class SessionDescription : IJSonObject<SessionDescription>
 {
+    public string Type;
     public string SessionType;
     public string Sdp;
 

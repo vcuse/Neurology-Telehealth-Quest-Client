@@ -1055,7 +1055,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1651649258}
   - component: {fileID: 1651649259}
-  - component: {fileID: 1651649260}
   m_Layer: 0
   m_Name: WebRTC-DataChannel-ClientServer
   m_TagString: Untagged
@@ -1091,18 +1090,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sendMessageViaChannel: 0
---- !u!114 &1651649260
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1651649255}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6137f66737b52e546b3e93833be96700, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &2133087261
 GameObject:
   m_ObjectHideFlags: 0

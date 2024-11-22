@@ -27,10 +27,4 @@ public class FetchUsers : MonoBehaviour
             Debug.Log("Data received: " + data);
         }
     }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
 }

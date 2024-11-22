@@ -4,6 +4,7 @@ using UnityEngine;
 [Serializable]
 public class CandidateInit : IJSonObject<CandidateInit>
 {
+    public string Type;
     public string Candidate;
     public string SdpMid;
     public int SdpMLineIndex;

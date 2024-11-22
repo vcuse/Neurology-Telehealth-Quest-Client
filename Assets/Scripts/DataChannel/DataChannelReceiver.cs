@@ -16,7 +16,7 @@ public class DataChannelReceiver : MonoBehaviour
 
     private void Start()
     {
-        InitClient("10.0.0.194", 8080);
+        InitClient();
     }
 
     private void Update()
@@ -34,12 +34,11 @@ public class DataChannelReceiver : MonoBehaviour
         connection.Close();
     }
 
-    public void InitClient(string serverIp, int serverPort)
+    public void InitClient()
     {
-        int port = serverPort == 0 ? 8080 : serverPort;
         clientId = gameObject.name;
 
-        ws = new WebSocket($"ws://{serverIp}:{port}/{nameof(DataChannelService)}");
+        ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=238473289&token=6789&key=peerjs");
         ws.OnMessage += (sender, e) =>
         {
             var requestArray = e.Data.Split("!");
@@ -74,16 +73,25 @@ public class DataChannelReceiver : MonoBehaviour
         };
         ws.Connect();
 
-        connection = new RTCPeerConnection();
+        RTCConfiguration config = new RTCConfiguration()
+        {
+            iceServers = new RTCIceServer[]
+             {
+                new RTCIceServer { urls = new string[]{ "stun:stun.l.google.com:19302" } }
+             }
+        };
+
+        connection = new RTCPeerConnection(ref config);
         connection.OnIceCandidate = candidate =>
         {
             var candidateInit = new CandidateInit()
             {
+                Type = "CANDIDATE!",
                 SdpMid = candidate.SdpMid,
                 SdpMLineIndex = candidate.SdpMLineIndex ?? 0,
                 Candidate = candidate.Candidate
             };
-            ws.Send("CANDIDATE!" + candidateInit.ConvertToJSON());
+            ws.Send(candidateInit.ConvertToJSON());
         };
         connection.OnIceConnectionChange = state =>
         {
@@ -120,9 +128,10 @@ public class DataChannelReceiver : MonoBehaviour
         // Send desc to server for sender connection
         var answerSessionDesc = new SessionDescription()
         {
+            Type = "ANSWER!",
             SessionType = answerDesc.type.ToString(),
             Sdp = answerDesc.sdp
         };
-        ws.Send("ANSWER!" + answerSessionDesc.ConvertToJSON());
+        ws.Send(answerSessionDesc.ConvertToJSON());
     }
 }
