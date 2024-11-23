@@ -15,7 +15,8 @@ public class DataChannelReceiver : MonoBehaviour
     private SessionDescription receivedOfferSessionDescTemp;
 
     private void Start()
-    {
+    {   
+        Debug.Log("Starting client!");
         InitClient();
     }
 
@@ -38,9 +39,12 @@ public class DataChannelReceiver : MonoBehaviour
     {
         clientId = gameObject.name;
 
-        ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=238473289&token=6789&key=peerjs");
-        ws.OnMessage += (sender, e) =>
+        ws = new WebSocket("wss://videochat-signaling-app.ue.r.appspot.com:443/peerjs?id=238473289&token=6789&key=peerjs");
+        ws.OnMessage += (sender, e) => 
         {
+            Debug.Log("Received Message: " + e.Data + " FROM: " + sender.ToString());
+            //THE SERVER WORKS AND OPENS A MSG
+
             var requestArray = e.Data.Split("!");
             var requestType = requestArray[0];
             var requestData = requestArray[1];
