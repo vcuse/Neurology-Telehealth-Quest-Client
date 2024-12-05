@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using WebSocketSharp;
 using Unity.WebRTC;
+using Meta.WitAi.Json;
 
 public class DataChannelReceiver : MonoBehaviour
 {
@@ -9,14 +10,12 @@ public class DataChannelReceiver : MonoBehaviour
     private RTCDataChannel dataChannel;
 
     private WebSocket ws;
-    private string clientId;
 
     private bool hasReceivedOffer = false;
     private SessionDescription receivedOfferSessionDescTemp;
 
     private void Start()
     {   
-        Debug.Log("Starting client!");
         InitClient();
     }
 
@@ -37,44 +36,50 @@ public class DataChannelReceiver : MonoBehaviour
 
     public void InitClient()
     {
-        clientId = gameObject.name;
-
-        ws = new WebSocket("wss://videochat-signaling-app.ue.r.appspot.com:443/peerjs?id=238473289&token=6789&key=peerjs");
-        ws.OnMessage += (sender, e) => 
+        ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=238473289&token=67898&key=peerjs");
+        ws.OnMessage += (sender, e) =>
         {
-            Debug.Log("Received Message: " + e.Data + " FROM: " + sender.ToString());
-            //THE SERVER WORKS AND OPENS A MSG
+            //var requestArray = e.Data.Split("!");
+            //var requestType = requestArray[0];
+            //var requestData = requestArray[1];
 
-            var requestArray = e.Data.Split("!");
-            var requestType = requestArray[0];
-            var requestData = requestArray[1];
+            if (e.Data.Contains("CANDIDATE"))
+            {
+                Debug.Log("Receiver got CANDIDATE: " + e.Data);
 
-            switch (requestType)
+                // Generate candidate data
+                var candidateInit = CandidateInit.FromJSON(e.Data);
+                RTCIceCandidateInit init = new RTCIceCandidateInit();
+                init.sdpMid = candidateInit.sdpMid;
+                init.sdpMLineIndex = candidateInit.sdpMLineIndex;
+                init.candidate = candidateInit.candidate;
+                RTCIceCandidate candidate = new RTCIceCandidate(init);
+
+                // Add candidate to this connection
+                connection.AddIceCandidate(candidate);
+            }
+            else
+            {
+                Debug.Log("Receiver got message: " + e.Data);
+            }
+
+            /*switch (requestType)
             {
                 case "OFFER":
                     Debug.Log(clientId + " - Got OFFER from Maximus: " + requestData);
                     receivedOfferSessionDescTemp = SessionDescription.FromJSON(requestData);
                     hasReceivedOffer = true;
                     break;
-                case "CANDIDATE":
-                    Debug.Log(clientId + " - Got CANDIDATE from Maximus: " + requestData);
-
-                    // Generate candidate data
-                    var candidateInit = CandidateInit.FromJSON(requestData);
-                    RTCIceCandidateInit init = new RTCIceCandidateInit();
-                    init.sdpMid = candidateInit.SdpMid;
-                    init.sdpMLineIndex = candidateInit.SdpMLineIndex;
-                    init.candidate = candidateInit.Candidate;
-                    RTCIceCandidate candidate = new RTCIceCandidate(init);
-
-                    // Add candidate to this connection
-                    connection.AddIceCandidate(candidate);
-                    break;
                 default:
                     Debug.Log(clientId + " - Maximus says: " + e.Data);
                     break;
-            }
+            }*/
         };
+        ws.OnClose += (sender, e) =>
+        {
+            Debug.Log("Receiver ws closed: " + e.Reason);
+        };
+
         ws.Connect();
 
         RTCConfiguration config = new RTCConfiguration()
@@ -88,15 +93,31 @@ public class DataChannelReceiver : MonoBehaviour
         connection = new RTCPeerConnection(ref config);
         connection.OnIceCandidate = candidate =>
         {
-            var candidateInit = new CandidateInit()
+            var candidateInit = new
             {
-                Type = "CANDIDATE!",
-                SdpMid = candidate.SdpMid,
-                SdpMLineIndex = candidate.SdpMLineIndex ?? 0,
-                Candidate = candidate.Candidate
+                candidate = candidate.Candidate,
+                sdpMLineIndex = candidate.SdpMLineIndex ?? 0,
+                sdpMid = candidate.SdpMid
             };
-            ws.Send(candidateInit.ConvertToJSON());
+
+            var payload = new
+            {
+                candidate = candidateInit,
+                connectionId = "238473289"
+            };
+
+            var message = new
+            {
+                payload = payload,
+                type = "CANDIDATE",
+                dst = "3489534895638"
+            };
+
+            var jsonData = JsonConvert.SerializeObject(message);
+            Debug.Log("RECEIVER sending CANDIDATE - " +  jsonData);
+            ws.Send(jsonData);
         };
+
         connection.OnIceConnectionChange = state =>
         {
             Debug.Log(state);

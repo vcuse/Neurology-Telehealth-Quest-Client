@@ -4,10 +4,10 @@ using UnityEngine;
 [Serializable]
 public class CandidateInit : IJSonObject<CandidateInit>
 {
-    public string Type;
-    public string Candidate;
-    public string SdpMid;
-    public int SdpMLineIndex;
+    public string type;
+    public string candidate;
+    public string sdpMid;
+    public int sdpMLineIndex;
 
     public static CandidateInit FromJSON(string jsonString)
     {
