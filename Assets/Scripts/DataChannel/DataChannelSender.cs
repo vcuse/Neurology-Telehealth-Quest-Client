@@ -1,6 +1,7 @@
-using Meta.WitAi.Json;
+using Newtonsoft.Json;
 using System.Collections;
 using Unity.WebRTC;
+using UnityEditor.PackageManager;
 using UnityEngine;
 using WebSocketSharp;
 
@@ -46,38 +47,31 @@ public class DataChannelSender : MonoBehaviour
         ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=3489534895638&token=6789&key=peerjs");
         ws.OnMessage += (sender, e) =>
         {
-            //var requestArray = e.Data.Split("!");
-            //var requestType = requestArray[0];
-            //var requestData = requestArray[1];
-
             if (e.Data.Contains("CANDIDATE"))
             {
                 Debug.Log("Sender got CANDIDATE: " + e.Data);
 
-                /*// Generate candidate data
-                var candidateInit = CandidateInit.FromJSON(requestData);
+                // Generate candidate data
+                var candidateInit = JsonConvert.DeserializeObject<Message>(e.Data);
                 RTCIceCandidateInit init = new RTCIceCandidateInit();
-                init.sdpMid = candidateInit.SdpMid;
-                init.sdpMLineIndex = candidateInit.SdpMLineIndex;
-                init.candidate = candidateInit.Candidate;
+                init.sdpMid = candidateInit.payload.candidate.sdpMid;
+                init.sdpMLineIndex = candidateInit.payload.candidate.sdpMLineIndex;
+                init.candidate = candidateInit.payload.candidate.candidate;
                 RTCIceCandidate candidate = new RTCIceCandidate(init);
 
                 // Add candidate to this connection
-                connection.AddIceCandidate(candidate);*/
+                connection.AddIceCandidate(candidate);
+            }
+            else if (e.Data.Contains("ANSWER"))
+            {
+                Debug.Log("Sender got ANSWER: " + e.Data);
+                receivedAnswerSessionDescTemp = JsonConvert.DeserializeObject<SessionDescription>(e.Data);
+                hasReceivedAnswer = true;
             }
             else
             {
                 Debug.Log("Sender got message: " + e.Data);
             }
-
-            /*switch (requestType)
-            {
-                case "ANSWER":
-                    Debug.Log(clientId + " - Got ANSWER from Maximus: " + requestData);
-                    receivedAnswerSessionDescTemp = SessionDescription.FromJSON(requestData);
-                    hasReceivedAnswer = true;
-                    break;
-            }*/
         };
         ws.OnClose += (sender, e) =>
         {
@@ -97,20 +91,20 @@ public class DataChannelSender : MonoBehaviour
         connection = new RTCPeerConnection(ref config);
         connection.OnIceCandidate = candidate =>
         {
-            var candidateInit = new
+            Candidate candidateInit = new Candidate()
             {
                 candidate = candidate.Candidate,
                 sdpMLineIndex = candidate.SdpMLineIndex ?? 0,
                 sdpMid = candidate.SdpMid
             };
 
-            var payload = new
+            Payload payload = new Payload()
             {
                 candidate = candidateInit,
                 connectionId = "3489534895638"
             };
 
-            var message = new
+            Message message = new Message()
             {
                 payload = payload,
                 type = "CANDIDATE",
@@ -153,18 +147,20 @@ public class DataChannelSender : MonoBehaviour
         // Send desc to server for receiver connection
         var offerSessionDesc = new SessionDescription()
         {
-            Type = "OFFER!",
-            SessionType = offerDesc.type.ToString(),
-            Sdp = offerDesc.sdp
+            type = "OFFER",
+            sdp = offerDesc.sdp
         };
-        ws.Send(offerSessionDesc.ConvertToJSON());
+
+        var jsonData = JsonConvert.SerializeObject(offerSessionDesc);
+        Debug.Log("Sending OFFER: " +  jsonData);
+        ws.Send(jsonData);
     }
 
     private IEnumerator SetRemoteDesc()
     {
         RTCSessionDescription answerSessionDesc = new RTCSessionDescription();
         answerSessionDesc.type = RTCSdpType.Answer;
-        answerSessionDesc.sdp = receivedAnswerSessionDescTemp.Sdp;
+        answerSessionDesc.sdp = receivedAnswerSessionDescTemp.sdp;
 
         var remoteDescOp = connection.SetRemoteDescription(ref answerSessionDesc);
         yield return remoteDescOp;

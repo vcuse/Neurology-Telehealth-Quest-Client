@@ -2,7 +2,8 @@ using System.Collections;
 using UnityEngine;
 using WebSocketSharp;
 using Unity.WebRTC;
-using Meta.WitAi.Json;
+using Newtonsoft.Json;
+using System.Collections.Generic;
 
 public class DataChannelReceiver : MonoBehaviour
 {
@@ -39,41 +40,32 @@ public class DataChannelReceiver : MonoBehaviour
         ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=238473289&token=67898&key=peerjs");
         ws.OnMessage += (sender, e) =>
         {
-            //var requestArray = e.Data.Split("!");
-            //var requestType = requestArray[0];
-            //var requestData = requestArray[1];
-
             if (e.Data.Contains("CANDIDATE"))
             {
                 Debug.Log("Receiver got CANDIDATE: " + e.Data);
 
                 // Generate candidate data
-                var candidateInit = CandidateInit.FromJSON(e.Data);
+                var candidateInit = JsonConvert.DeserializeObject<Message>(e.Data);
                 RTCIceCandidateInit init = new RTCIceCandidateInit();
-                init.sdpMid = candidateInit.sdpMid;
-                init.sdpMLineIndex = candidateInit.sdpMLineIndex;
-                init.candidate = candidateInit.candidate;
+                init.sdpMid = candidateInit.payload.candidate.sdpMid;
+                init.sdpMLineIndex = candidateInit.payload.candidate.sdpMLineIndex;
+                init.candidate = candidateInit.payload.candidate.candidate;
                 RTCIceCandidate candidate = new RTCIceCandidate(init);
 
                 // Add candidate to this connection
                 connection.AddIceCandidate(candidate);
+            }
+            else if (e.Data.Contains("OFFER"))
+            {
+                Debug.Log("Receiver got OFFER: " + e.Data);
+                receivedOfferSessionDescTemp = JsonConvert.DeserializeObject<SessionDescription>(e.Data);
+                hasReceivedOffer = true;
             }
             else
             {
                 Debug.Log("Receiver got message: " + e.Data);
             }
 
-            /*switch (requestType)
-            {
-                case "OFFER":
-                    Debug.Log(clientId + " - Got OFFER from Maximus: " + requestData);
-                    receivedOfferSessionDescTemp = SessionDescription.FromJSON(requestData);
-                    hasReceivedOffer = true;
-                    break;
-                default:
-                    Debug.Log(clientId + " - Maximus says: " + e.Data);
-                    break;
-            }*/
         };
         ws.OnClose += (sender, e) =>
         {
@@ -93,20 +85,20 @@ public class DataChannelReceiver : MonoBehaviour
         connection = new RTCPeerConnection(ref config);
         connection.OnIceCandidate = candidate =>
         {
-            var candidateInit = new
+            Candidate candidateInit = new Candidate()
             {
                 candidate = candidate.Candidate,
                 sdpMLineIndex = candidate.SdpMLineIndex ?? 0,
                 sdpMid = candidate.SdpMid
             };
 
-            var payload = new
+            Payload payload = new Payload()
             {
                 candidate = candidateInit,
                 connectionId = "238473289"
             };
 
-            var message = new
+            Message message = new Message()
             {
                 payload = payload,
                 type = "CANDIDATE",
@@ -114,7 +106,6 @@ public class DataChannelReceiver : MonoBehaviour
             };
 
             var jsonData = JsonConvert.SerializeObject(message);
-            Debug.Log("RECEIVER sending CANDIDATE - " +  jsonData);
             ws.Send(jsonData);
         };
 
@@ -138,7 +129,7 @@ public class DataChannelReceiver : MonoBehaviour
     {
         RTCSessionDescription offerSessionDesc = new RTCSessionDescription();
         offerSessionDesc.type = RTCSdpType.Offer;
-        offerSessionDesc.sdp = receivedOfferSessionDescTemp.Sdp;
+        offerSessionDesc.sdp = receivedOfferSessionDescTemp.sdp;
 
         var remoteDescOp = connection.SetRemoteDescription(ref offerSessionDesc);
         yield return remoteDescOp;
@@ -153,10 +144,11 @@ public class DataChannelReceiver : MonoBehaviour
         // Send desc to server for sender connection
         var answerSessionDesc = new SessionDescription()
         {
-            Type = "ANSWER!",
-            SessionType = answerDesc.type.ToString(),
-            Sdp = answerDesc.sdp
+            type = "ANSWER!",
+            sdp = answerDesc.sdp
         };
-        ws.Send(answerSessionDesc.ConvertToJSON());
+
+        var jsonData = JsonConvert.SerializeObject(answerSessionDesc);
+        ws.Send(jsonData);
     }
 }
