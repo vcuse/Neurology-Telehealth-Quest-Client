@@ -3,11 +3,41 @@ using System.Collections;
 using Unity.WebRTC;
 using UnityEditor.PackageManager;
 using UnityEngine;
+using System;
 using WebSocketSharp;
+
+[Serializable]
+public class OfferMessage
+{
+    public string type;
+    public string src;
+    public string dst;
+    public OfferPayload payload;
+}
+
+[Serializable]
+public class OfferPayload
+{
+    public SdpData sdp;
+    public string type;
+    public string connectionId;
+    public string browser;
+    public string label;
+    public bool reliable;
+    public string serialization;
+}
+
+[Serializable]
+public class SdpData
+{
+    public string type;
+    public string sdp;
+}
 
 public class DataChannelSender : MonoBehaviour
 {
     [SerializeField] private bool sendMessageViaChannel = false;
+
 
     private RTCPeerConnection connection;
     private RTCDataChannel dataChannel;
@@ -16,6 +46,7 @@ public class DataChannelSender : MonoBehaviour
 
     private bool hasReceivedAnswer = false;
     private SessionDescription receivedAnswerSessionDescTemp;
+    private SessionDescription remoteSDP;
 
     private void Start()
     {
@@ -44,13 +75,13 @@ public class DataChannelSender : MonoBehaviour
 
     public void InitClient()
     {
-        ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=3489534895638&token=6789&key=peerjs");
+        ws = new WebSocket("wss://videochat-signaling-app.ue.r.appspot.com:443/peerjs?id=3489534895638&token=6789&key=peerjs");
         ws.OnMessage += (sender, e) =>
         {
             if (e.Data.Contains("CANDIDATE"))
             {
                 Debug.Log("Sender got CANDIDATE: " + e.Data);
-
+                
                 // Generate candidate data
                 var candidateInit = JsonConvert.DeserializeObject<Message>(e.Data);
                 RTCIceCandidateInit init = new RTCIceCandidateInit();
@@ -67,6 +98,34 @@ public class DataChannelSender : MonoBehaviour
                 Debug.Log("Sender got ANSWER: " + e.Data);
                 receivedAnswerSessionDescTemp = JsonConvert.DeserializeObject<SessionDescription>(e.Data);
                 hasReceivedAnswer = true;
+            }
+            else if (e.Data.Contains("OFFER")){
+                Debug.Log("We got an OFFER" + e.Data);
+                String rSDP = JsonConvert.DeserializeObject<OfferMessage>(e.Data).payload.sdp.sdp;
+                Debug.Log("Remote SDP is " + rSDP);
+
+                RTCSessionDescription sessionDescription = new RTCSessionDescription
+                {
+                    type = RTCSdpType.Offer,
+                    sdp = rSDP
+                };
+
+                
+                // // Await the task returned by SetLocalDescription to ensure it's applied
+                // connection.SetLocalDescription(ref sessionDescription);
+
+                // // After this awaits successfully, you can check LocalDescription
+                // if (connection.LocalDescription.type == RTCSdpType.Offer &&
+                //     connection.LocalDescription.sdp == rSDP)
+                // {
+                //     Debug.Log("Local description successfully assigned.");
+                // }
+                // else
+                // {
+                //     Debug.LogWarning("Local description was not assigned correctly.");
+                // }
+
+                
             }
             else
             {
