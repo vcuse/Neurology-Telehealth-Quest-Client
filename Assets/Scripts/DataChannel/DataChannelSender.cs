@@ -48,6 +48,8 @@ public class DataChannelSender : MonoBehaviour
     private SessionDescription receivedAnswerSessionDescTemp;
     private SessionDescription remoteSDP;
 
+    float timePassed = 0f;
+
     private void Start()
     {
         InitClient();
@@ -55,6 +57,20 @@ public class DataChannelSender : MonoBehaviour
 
     private void Update()
     {
+        timePassed += Time.deltaTime;
+        if (timePassed > 5f)
+        {
+            Debug.Log("Sender sending heartbeat");
+            var message = new
+            {
+                type = "HEARTBEAT"
+            };
+            var jsonData = JsonConvert.SerializeObject(message);
+            ws.Send(jsonData);
+
+            timePassed = 0f;
+        }
+
         if (hasReceivedAnswer)
         {
             hasReceivedAnswer = !hasReceivedAnswer;
@@ -152,6 +168,7 @@ public class DataChannelSender : MonoBehaviour
         {
             Candidate candidateInit = new Candidate()
             {
+                type = "CANDIDATE",
                 candidate = candidate.Candidate,
                 sdpMLineIndex = candidate.SdpMLineIndex ?? 0,
                 sdpMid = candidate.SdpMid
@@ -211,7 +228,6 @@ public class DataChannelSender : MonoBehaviour
         };
 
         var jsonData = JsonConvert.SerializeObject(offerSessionDesc);
-        Debug.Log("Sending OFFER: " +  jsonData);
         ws.Send(jsonData);
     }
 
