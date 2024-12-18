@@ -15,6 +15,8 @@ public class DataChannelReceiver : MonoBehaviour
     private bool hasReceivedOffer = false;
     private SessionDescription receivedOfferSessionDescTemp;
 
+    float timePassed = 0f;
+
     private void Start()
     {   
         InitClient();
@@ -22,6 +24,20 @@ public class DataChannelReceiver : MonoBehaviour
 
     private void Update()
     {
+        timePassed += Time.deltaTime;
+        if (timePassed > 5f)
+        {
+            Debug.Log("Receiver sending heartbeat");
+            var message = new
+            {
+                type = "HEARTBEAT"
+            };
+            var jsonData = JsonConvert.SerializeObject(message);
+            ws.Send(jsonData);
+
+            timePassed = 0f;
+        }
+
         if (hasReceivedOffer)
         {
             hasReceivedOffer = !hasReceivedOffer;
@@ -37,7 +53,7 @@ public class DataChannelReceiver : MonoBehaviour
 
     public void InitClient()
     {
-        ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=238473289&token=67898&key=peerjs");
+        ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=238473289&token=67892&key=peerjs");
         ws.OnMessage += (sender, e) =>
         {
             if (e.Data.Contains("CANDIDATE"))
@@ -77,9 +93,9 @@ public class DataChannelReceiver : MonoBehaviour
         RTCConfiguration config = new RTCConfiguration()
         {
             iceServers = new RTCIceServer[]
-             {
+            {
                 new RTCIceServer { urls = new string[]{ "stun:stun.l.google.com:19302" } }
-             }
+            }
         };
 
         connection = new RTCPeerConnection(ref config);
@@ -87,6 +103,7 @@ public class DataChannelReceiver : MonoBehaviour
         {
             Candidate candidateInit = new Candidate()
             {
+                type = "CANDIDATE",
                 candidate = candidate.Candidate,
                 sdpMLineIndex = candidate.SdpMLineIndex ?? 0,
                 sdpMid = candidate.SdpMid
@@ -144,7 +161,7 @@ public class DataChannelReceiver : MonoBehaviour
         // Send desc to server for sender connection
         var answerSessionDesc = new SessionDescription()
         {
-            type = "ANSWER!",
+            type = "ANSWER",
             sdp = answerDesc.sdp
         };
 
