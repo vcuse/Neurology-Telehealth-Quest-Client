@@ -1,52 +1,20 @@
 using Newtonsoft.Json;
 using System.Collections;
 using Unity.WebRTC;
-using UnityEditor.PackageManager;
 using UnityEngine;
 using System;
 using WebSocketSharp;
 
-[Serializable]
-public class OfferMessage
-{
-    public string type;
-    public string src;
-    public string dst;
-    public OfferPayload payload;
-}
-
-[Serializable]
-public class OfferPayload
-{
-    public SdpData sdp;
-    public string type;
-    public string connectionId;
-    public string browser;
-    public string label;
-    public bool reliable;
-    public string serialization;
-}
-
-[Serializable]
-public class SdpData
-{
-    public string type;
-    public string sdp;
-}
-
 public class DataChannelSender : MonoBehaviour
 {
-    [SerializeField] private bool sendMessageViaChannel = false;
-
-
     private RTCPeerConnection connection;
-    private RTCDataChannel dataChannel;
 
     private WebSocket ws;
 
-    private bool hasReceivedAnswer = false;
-    private SessionDescription receivedAnswerSessionDescTemp;
-    private SessionDescription remoteSDP;
+    private bool hasReceivedOffer = false;
+    private RTCSessionDescription sessionDescription;
+
+    private OfferMessage offer;
 
     float timePassed = 0f;
 
@@ -60,7 +28,6 @@ public class DataChannelSender : MonoBehaviour
         timePassed += Time.deltaTime;
         if (timePassed > 5f)
         {
-            Debug.Log("Sender sending heartbeat");
             var message = new
             {
                 type = "HEARTBEAT"
@@ -71,22 +38,11 @@ public class DataChannelSender : MonoBehaviour
             timePassed = 0f;
         }
 
-        if (hasReceivedAnswer)
+        if (hasReceivedOffer)
         {
-            hasReceivedAnswer = !hasReceivedAnswer;
-            StartCoroutine(SetRemoteDesc());
+            hasReceivedOffer = !hasReceivedOffer;
+            StartCoroutine(CreateAnswer(sessionDescription));
         }
-        if (sendMessageViaChannel)
-        {
-            sendMessageViaChannel = !sendMessageViaChannel;
-            dataChannel.Send("TEST! TEST! TEST!");
-        }
-    }
-
-    private void OnDestroy()
-    {
-        dataChannel.Close();
-        connection.Close();
     }
 
     public void InitClient()
@@ -99,7 +55,7 @@ public class DataChannelSender : MonoBehaviour
                 Debug.Log("Sender got CANDIDATE: " + e.Data);
                 
                 // Generate candidate data
-                var candidateInit = JsonConvert.DeserializeObject<Message>(e.Data);
+                var candidateInit = JsonConvert.DeserializeObject<CandidateMessage>(e.Data);
                 RTCIceCandidateInit init = new RTCIceCandidateInit();
                 init.sdpMid = candidateInit.payload.candidate.sdpMid;
                 init.sdpMLineIndex = candidateInit.payload.candidate.sdpMLineIndex;
@@ -109,39 +65,32 @@ public class DataChannelSender : MonoBehaviour
                 // Add candidate to this connection
                 connection.AddIceCandidate(candidate);
             }
-            else if (e.Data.Contains("ANSWER"))
-            {
-                Debug.Log("Sender got ANSWER: " + e.Data);
-                receivedAnswerSessionDescTemp = JsonConvert.DeserializeObject<SessionDescription>(e.Data);
-                hasReceivedAnswer = true;
-            }
             else if (e.Data.Contains("OFFER")){
+                hasReceivedOffer = true;
                 Debug.Log("We got an OFFER" + e.Data);
-                String rSDP = JsonConvert.DeserializeObject<OfferMessage>(e.Data).payload.sdp.sdp;
+                offer = JsonConvert.DeserializeObject<OfferMessage>(e.Data);
+                String rSDP = offer.payload.sdp.sdp;
                 Debug.Log("Remote SDP is " + rSDP);
 
-                RTCSessionDescription sessionDescription = new RTCSessionDescription
+                sessionDescription = new RTCSessionDescription()
                 {
                     type = RTCSdpType.Offer,
                     sdp = rSDP
                 };
-
                 
-                // // Await the task returned by SetLocalDescription to ensure it's applied
-                // connection.SetLocalDescription(ref sessionDescription);
+                // Await the task returned by SetLocalDescription to ensure it's applied
+                connection.SetLocalDescription(ref sessionDescription);
 
-                // // After this awaits successfully, you can check LocalDescription
-                // if (connection.LocalDescription.type == RTCSdpType.Offer &&
-                //     connection.LocalDescription.sdp == rSDP)
-                // {
-                //     Debug.Log("Local description successfully assigned.");
-                // }
-                // else
-                // {
-                //     Debug.LogWarning("Local description was not assigned correctly.");
-                // }
-
-                
+                // After this awaits successfully, you can check LocalDescription
+                if (connection.LocalDescription.type == RTCSdpType.Offer &&
+                    connection.LocalDescription.sdp == rSDP)
+                {
+                    Debug.Log("Local description successfully assigned.");
+                }
+                else
+                {
+                    Debug.LogWarning("Local description was not assigned correctly.");
+                }
             }
             else
             {
@@ -174,17 +123,17 @@ public class DataChannelSender : MonoBehaviour
                 sdpMid = candidate.SdpMid
             };
 
-            Payload payload = new Payload()
+            CandidatePayload payload = new CandidatePayload()
             {
                 candidate = candidateInit,
                 connectionId = "3489534895638"
             };
 
-            Message message = new Message()
+            CandidateMessage message = new CandidateMessage()
             {
                 payload = payload,
                 type = "CANDIDATE",
-                dst = "238473289"
+                dst = offer.src
             };
             
             var jsonData = JsonConvert.SerializeObject(message);
@@ -195,49 +144,93 @@ public class DataChannelSender : MonoBehaviour
             Debug.Log(state);
         };
 
-        dataChannel = connection.CreateDataChannel("sendChannel");
-        dataChannel.OnOpen = () =>
-        {
-            Debug.Log("Sender opended channel");
-        };
-        dataChannel.OnClose = () =>
-        {
-            Debug.Log("Sender closed channel");
-        };
-
         connection.OnNegotiationNeeded = () =>
         {
+            Debug.Log("Negotiation needed");
             StartCoroutine(CreateOffer());
         };
     }
 
     private IEnumerator CreateOffer()
     {
-        var offer = connection.CreateOffer();
-        yield return offer;
+        var newOffer = connection.CreateOffer();
+        yield return newOffer;
 
-        var offerDesc = offer.Desc;
+        Debug.Log(newOffer.Desc.sdp);
+
+        var offerDesc = newOffer.Desc;
         var localDescOp = connection.SetLocalDescription(ref offerDesc);
         yield return localDescOp;
 
         // Send desc to server for receiver connection
-        var offerSessionDesc = new SessionDescription()
+        SdpData sdpData = new SdpData()
         {
-            type = "OFFER",
+            type = "offer",
             sdp = offerDesc.sdp
         };
 
-        var jsonData = JsonConvert.SerializeObject(offerSessionDesc);
+        OfferPayload payload = new OfferPayload()
+        {
+            sdp = sdpData,
+            type = "data",
+            connectionId = offer.payload.connectionId,
+            browser = "chrome",
+            label = offer.payload.label,
+            reliable = false,
+            serialization = "binary"
+        };
+
+        OfferMessage message = new OfferMessage()
+        {
+            type = "OFFER",
+            src = "3489534895638",
+            dst = offer.src,
+            payload = payload
+        };
+
+        var jsonData = JsonConvert.SerializeObject(message);
+        Debug.Log("Sending offer back - " + jsonData);
         ws.Send(jsonData);
     }
 
-    private IEnumerator SetRemoteDesc()
+    private IEnumerator CreateAnswer(RTCSessionDescription sessionDescription)
     {
-        RTCSessionDescription answerSessionDesc = new RTCSessionDescription();
-        answerSessionDesc.type = RTCSdpType.Answer;
-        answerSessionDesc.sdp = receivedAnswerSessionDescTemp.sdp;
+        var answer = connection.CreateAnswer();
+        yield return answer;
 
-        var remoteDescOp = connection.SetRemoteDescription(ref answerSessionDesc);
+        var answerDesc = answer.Desc;
+        Debug.Log("Why are you null??: " + answerDesc.sdp);
+
+        var localDescOp = connection.SetLocalDescription(ref answerDesc);
+        yield return localDescOp;
+
+        var remoteDescOp = connection.SetRemoteDescription(ref sessionDescription);
         yield return remoteDescOp;
+
+        // Send desc to server for sender connection
+        SdpData sdpData = new SdpData()
+        {
+            type = "answer",
+            sdp = answerDesc.sdp
+        };
+
+        AnswerPayload payload = new AnswerPayload()
+        {
+            sdp = sdpData,
+            type = "data",
+            browser = "chrome",
+            connectionId = offer.payload.connectionId
+        };
+
+        AnswerMessage answerSessionDesc = new AnswerMessage()
+        {
+            type = "ANSWER",
+            payload = payload,
+            dst = offer.src
+        };
+
+        var jsonData = JsonConvert.SerializeObject(answerSessionDesc);
+        Debug.Log(jsonData);
+        ws.Send(jsonData);
     }
 }

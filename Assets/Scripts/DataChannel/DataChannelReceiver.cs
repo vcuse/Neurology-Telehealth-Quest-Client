@@ -3,7 +3,6 @@ using UnityEngine;
 using WebSocketSharp;
 using Unity.WebRTC;
 using Newtonsoft.Json;
-using System.Collections.Generic;
 
 public class DataChannelReceiver : MonoBehaviour
 {
@@ -13,7 +12,7 @@ public class DataChannelReceiver : MonoBehaviour
     private WebSocket ws;
 
     private bool hasReceivedOffer = false;
-    private SessionDescription receivedOfferSessionDescTemp;
+    private RTCSessionDescription sessionDescription;
 
     float timePassed = 0f;
 
@@ -27,7 +26,6 @@ public class DataChannelReceiver : MonoBehaviour
         timePassed += Time.deltaTime;
         if (timePassed > 5f)
         {
-            Debug.Log("Receiver sending heartbeat");
             var message = new
             {
                 type = "HEARTBEAT"
@@ -36,12 +34,6 @@ public class DataChannelReceiver : MonoBehaviour
             ws.Send(jsonData);
 
             timePassed = 0f;
-        }
-
-        if (hasReceivedOffer)
-        {
-            hasReceivedOffer = !hasReceivedOffer;
-            StartCoroutine(CreateAnswer());
         }
     }
 
@@ -53,7 +45,7 @@ public class DataChannelReceiver : MonoBehaviour
 
     public void InitClient()
     {
-        ws = new WebSocket("ws://127.0.0.1:9000/peerjs?id=238473289&token=67892&key=peerjs");
+        ws = new WebSocket("wss://videochat-signaling-app.ue.r.appspot.com:443/peerjs?id=238473289&token=67892&key=peerjs");
         ws.OnMessage += (sender, e) =>
         {
             if (e.Data.Contains("CANDIDATE"))
@@ -61,7 +53,7 @@ public class DataChannelReceiver : MonoBehaviour
                 Debug.Log("Receiver got CANDIDATE: " + e.Data);
 
                 // Generate candidate data
-                var candidateInit = JsonConvert.DeserializeObject<Message>(e.Data);
+                var candidateInit = JsonConvert.DeserializeObject<CandidateMessage>(e.Data);
                 RTCIceCandidateInit init = new RTCIceCandidateInit();
                 init.sdpMid = candidateInit.payload.candidate.sdpMid;
                 init.sdpMLineIndex = candidateInit.payload.candidate.sdpMLineIndex;
@@ -73,9 +65,30 @@ public class DataChannelReceiver : MonoBehaviour
             }
             else if (e.Data.Contains("OFFER"))
             {
-                Debug.Log("Receiver got OFFER: " + e.Data);
-                receivedOfferSessionDescTemp = JsonConvert.DeserializeObject<SessionDescription>(e.Data);
-                hasReceivedOffer = true;
+                Debug.Log("We got an OFFER" + e.Data);
+                string rSDP = JsonConvert.DeserializeObject<OfferMessage>(e.Data).payload.sdp.sdp;
+                Debug.Log("Remote SDP is " + rSDP);
+
+                sessionDescription = new RTCSessionDescription
+                {
+                    type = RTCSdpType.Offer,
+                    sdp = rSDP
+                };
+
+                // Await the task returned by SetLocalDescription to ensure it's applied
+                connection.SetLocalDescription(ref sessionDescription);
+
+                // After this awaits successfully, you can check LocalDescription
+                if (connection.LocalDescription.type == RTCSdpType.Offer &&
+                    connection.LocalDescription.sdp == rSDP)
+                {
+                    Debug.Log("Local description successfully assigned.");
+                    hasReceivedOffer = true;
+                }
+                else
+                {
+                    Debug.LogWarning("Local description was not assigned correctly.");
+                }
             }
             else
             {
@@ -109,13 +122,13 @@ public class DataChannelReceiver : MonoBehaviour
                 sdpMid = candidate.SdpMid
             };
 
-            Payload payload = new Payload()
+            CandidatePayload payload = new CandidatePayload()
             {
                 candidate = candidateInit,
                 connectionId = "238473289"
             };
 
-            Message message = new Message()
+            CandidateMessage message = new CandidateMessage()
             {
                 payload = payload,
                 type = "CANDIDATE",
@@ -140,32 +153,5 @@ public class DataChannelReceiver : MonoBehaviour
                 Debug.Log("Receiver received: " + message);
             };
         };
-    }
-
-    private IEnumerator CreateAnswer()
-    {
-        RTCSessionDescription offerSessionDesc = new RTCSessionDescription();
-        offerSessionDesc.type = RTCSdpType.Offer;
-        offerSessionDesc.sdp = receivedOfferSessionDescTemp.sdp;
-
-        var remoteDescOp = connection.SetRemoteDescription(ref offerSessionDesc);
-        yield return remoteDescOp;
-
-        var answer = connection.CreateAnswer();
-        yield return answer;
-
-        var answerDesc = answer.Desc;
-        var localDescOp = connection.SetLocalDescription(ref answerDesc);
-        yield return localDescOp;
-
-        // Send desc to server for sender connection
-        var answerSessionDesc = new SessionDescription()
-        {
-            type = "ANSWER",
-            sdp = answerDesc.sdp
-        };
-
-        var jsonData = JsonConvert.SerializeObject(answerSessionDesc);
-        ws.Send(jsonData);
     }
 }
