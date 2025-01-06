@@ -4,10 +4,13 @@ using Unity.WebRTC;
 using UnityEngine;
 using System;
 using WebSocketSharp;
+using static OVRHaptics;
+using System.Threading;
 
 public class DataChannelSender : MonoBehaviour
 {
     private RTCPeerConnection connection;
+    private RTCPeerConnection localConnection;
 
     private WebSocket ws;
 
@@ -17,9 +20,19 @@ public class DataChannelSender : MonoBehaviour
     private OfferMessage offer;
 
     float timePassed = 0f;
+    private int count = 0;
 
     private void Start()
-    {
+    {   
+        RTCConfiguration config = new RTCConfiguration()
+        {
+            iceServers = new RTCIceServer[]
+            {
+                new RTCIceServer { urls = new string[]{ "stun:stun.l.google.com:19302" } }
+            }
+        };
+        localConnection = new RTCPeerConnection(ref config);
+        localConnection.CreateDataChannel("dataChannel");
         InitClient();
     }
 
@@ -38,10 +51,12 @@ public class DataChannelSender : MonoBehaviour
             timePassed = 0f;
         }
 
-        if (hasReceivedOffer)
+        if (hasReceivedOffer && count == 0)
         {
             hasReceivedOffer = !hasReceivedOffer;
-            StartCoroutine(CreateAnswer(sessionDescription));
+            Debug.Log("session desc" + sessionDescription.sdp);
+            StartCoroutine(SetRemoteDescriptionCoroutine(sessionDescription));
+            count = 1;
         }
     }
 
@@ -66,30 +81,33 @@ public class DataChannelSender : MonoBehaviour
                 connection.AddIceCandidate(candidate);
             }
             else if (e.Data.Contains("OFFER")){
-                hasReceivedOffer = true;
+
+                //hasReceivedOffer = true;
                 Debug.Log("We got an OFFER" + e.Data);
                 offer = JsonConvert.DeserializeObject<OfferMessage>(e.Data);
-                String rSDP = offer.payload.sdp.sdp;
-                Debug.Log("Remote SDP is " + rSDP);
+                if (offer.payload.type == "media")
+                {   
+                    String rSDP = offer.payload.sdp.sdp;
+                    Debug.Log("Remote SDP is " + rSDP);
+                    Debug.Log(e.Data);
 
-                sessionDescription = new RTCSessionDescription()
-                {
-                    type = RTCSdpType.Offer,
-                    sdp = rSDP
-                };
-                
-                // Await the task returned by SetLocalDescription to ensure it's applied
-                connection.SetLocalDescription(ref sessionDescription);
+                    this.sessionDescription = new RTCSessionDescription()
+                    {
+                        type = RTCSdpType.Offer,
+                        sdp = rSDP
+                    };
 
-                // After this awaits successfully, you can check LocalDescription
-                if (connection.LocalDescription.type == RTCSdpType.Offer &&
-                    connection.LocalDescription.sdp == rSDP)
-                {
-                    Debug.Log("Local description successfully assigned.");
-                }
-                else
-                {
-                    Debug.LogWarning("Local description was not assigned correctly.");
+                    // Await the task returned by SetLocalDescription to ensure it's applied
+                   
+
+
+                    hasReceivedOffer = true;
+
+                    // After this awaits successfully, you can check LocalDescription
+                    Debug.Log("RemoteDesc Type " + connection.RemoteDescription.type);
+                    Debug.Log("Remote Desc sdp" + connection.RemoteDescription.sdp);
+
+
                 }
             }
             else
@@ -115,6 +133,10 @@ public class DataChannelSender : MonoBehaviour
         connection = new RTCPeerConnection(ref config);
         connection.OnIceCandidate = candidate =>
         {
+            localConnection.AddIceCandidate(candidate);
+            Debug.Log("CANDIDATE RECEIVED" + candidate.ToString());
+
+
             Candidate candidateInit = new Candidate()
             {
                 type = "CANDIDATE",
@@ -142,6 +164,8 @@ public class DataChannelSender : MonoBehaviour
         connection.OnIceConnectionChange = state =>
         {
             Debug.Log(state);
+
+           
         };
 
         connection.OnNegotiationNeeded = () =>
@@ -149,6 +173,29 @@ public class DataChannelSender : MonoBehaviour
             Debug.Log("Negotiation needed");
             StartCoroutine(CreateOffer());
         };
+
+        localConnection.OnIceCandidate = candidate =>
+        {
+            connection.AddIceCandidate(candidate);
+        };
+    }
+
+    private IEnumerator SetRemoteDescriptionCoroutine(RTCSessionDescription description)
+    {
+        var setDescOp = connection.SetRemoteDescription(ref description);
+
+        // Wait for the operation to complete
+        yield return setDescOp;
+
+       
+
+        // After setting the remote description, continue your logic
+        Debug.Log("Remote description set successfully.");
+        Debug.Log("RemoteDesc Type " + connection.RemoteDescription.type);
+        Debug.Log("Remote Desc sdp" + connection.RemoteDescription.sdp);
+
+        // Now, you can proceed with other actions like sending an answer, etc.
+        StartCoroutine(CreateAnswer());
     }
 
     private IEnumerator CreateOffer()
@@ -193,18 +240,18 @@ public class DataChannelSender : MonoBehaviour
         ws.Send(jsonData);
     }
 
-    private IEnumerator CreateAnswer(RTCSessionDescription sessionDescription)
+    private IEnumerator CreateAnswer()
     {
         var answer = connection.CreateAnswer();
         yield return answer;
-
+        Debug.Log("answer variable direct"+ answer.Desc.sdp);
         var answerDesc = answer.Desc;
         Debug.Log("Why are you null??: " + answerDesc.sdp);
 
         var localDescOp = connection.SetLocalDescription(ref answerDesc);
         yield return localDescOp;
 
-        var remoteDescOp = connection.SetRemoteDescription(ref sessionDescription);
+        var remoteDescOp = localConnection.SetRemoteDescription(ref sessionDescription);
         yield return remoteDescOp;
 
         // Send desc to server for sender connection
@@ -214,6 +261,8 @@ public class DataChannelSender : MonoBehaviour
             sdp = answerDesc.sdp
         };
 
+        RTCSessionDescription sdpDesc = new RTCSessionDescription();
+        sdpDesc.sdp = answerDesc.sdp; 
         AnswerPayload payload = new AnswerPayload()
         {
             sdp = sdpData,
