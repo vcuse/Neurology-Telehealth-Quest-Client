@@ -2,7 +2,7 @@ using System;
 using TMPro;
 using UnityEngine;
 
-public class ScreenLogger : MonoBehaviour
+public class ConnectionMessages : MonoBehaviour
 {
     [SerializeField] private TextMeshProUGUI logTextBox;
 

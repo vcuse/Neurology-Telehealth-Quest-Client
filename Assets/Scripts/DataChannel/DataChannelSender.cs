@@ -6,6 +6,7 @@ using System;
 using WebSocketSharp;
 using static OVRHaptics;
 using System.Threading;
+using TMPro;
 
 public class DataChannelSender : MonoBehaviour
 {
@@ -22,6 +23,10 @@ public class DataChannelSender : MonoBehaviour
     float timePassed = 0f;
     private int count = 0;
 
+    RTCDataChannel dataChannel;
+
+    [SerializeField] private TextMeshProUGUI dataTextBox;
+
     private void Start()
     {   
         RTCConfiguration config = new RTCConfiguration()
@@ -32,7 +37,6 @@ public class DataChannelSender : MonoBehaviour
             }
         };
         localConnection = new RTCPeerConnection(ref config);
-        localConnection.CreateDataChannel("dataChannel");
         InitClient();
     }
 
@@ -85,7 +89,7 @@ public class DataChannelSender : MonoBehaviour
                 //hasReceivedOffer = true;
                 Debug.Log("We got an OFFER" + e.Data);
                 offer = JsonConvert.DeserializeObject<OfferMessage>(e.Data);
-                if (offer.payload.type == "media")
+                if (offer.payload.type == "data")
                 {   
                     String rSDP = offer.payload.sdp.sdp;
                     Debug.Log("Remote SDP is " + rSDP);
@@ -136,7 +140,6 @@ public class DataChannelSender : MonoBehaviour
             localConnection.AddIceCandidate(candidate);
             Debug.Log("CANDIDATE RECEIVED" + candidate.ToString());
 
-
             Candidate candidateInit = new Candidate()
             {
                 type = "CANDIDATE",
@@ -163,9 +166,7 @@ public class DataChannelSender : MonoBehaviour
         };
         connection.OnIceConnectionChange = state =>
         {
-            Debug.Log(state);
-
-           
+            Debug.Log("Ice connection change: " + state);
         };
 
         connection.OnNegotiationNeeded = () =>
@@ -177,6 +178,19 @@ public class DataChannelSender : MonoBehaviour
         localConnection.OnIceCandidate = candidate =>
         {
             connection.AddIceCandidate(candidate);
+        };
+
+        connection.OnDataChannel = channel =>
+        {
+            dataChannel = channel;
+            dataChannel.OnMessage = bytes =>
+            {
+                var message = System.Text.Encoding.UTF8.GetString(bytes);
+                dataTextBox.text += message + Environment.NewLine;
+                Debug.Log("Message received: " + message);
+            };
+            string text = "Adam"; // Change this to send any message you want to the other client
+            dataChannel.Send(text);
         };
     }
 
@@ -244,9 +258,8 @@ public class DataChannelSender : MonoBehaviour
     {
         var answer = connection.CreateAnswer();
         yield return answer;
-        Debug.Log("answer variable direct"+ answer.Desc.sdp);
+        Debug.Log("answer variable direct" + answer.Desc.sdp);
         var answerDesc = answer.Desc;
-        Debug.Log("Why are you null??: " + answerDesc.sdp);
 
         var localDescOp = connection.SetLocalDescription(ref answerDesc);
         yield return localDescOp;
@@ -279,7 +292,6 @@ public class DataChannelSender : MonoBehaviour
         };
 
         var jsonData = JsonConvert.SerializeObject(answerSessionDesc);
-        Debug.Log(jsonData);
         ws.Send(jsonData);
     }
 }
