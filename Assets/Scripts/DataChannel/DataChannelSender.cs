@@ -7,6 +7,7 @@ using WebSocketSharp;
 using static OVRHaptics;
 using System.Threading;
 using TMPro;
+using UnityEngine.UI;
 
 public class DataChannelSender : MonoBehaviour
 {
@@ -25,10 +26,36 @@ public class DataChannelSender : MonoBehaviour
 
     RTCDataChannel dataChannel;
 
-    [SerializeField] private TextMeshProUGUI dataTextBox;
+    [SerializeField] private TextMeshProUGUI peerMessagesTextBox;
+    [SerializeField] private bool printMessages;
+    private string startText = "Peer Messages:\n";
+
+    private MediaStream remoteStream;
+    [SerializeField] private RawImage receiveImage;
+
 
     private void Start()
-    {   
+    {
+        StartCoroutine(WebRTC.Update());
+
+        remoteStream = new MediaStream();
+        remoteStream.OnAddTrack = e =>
+        {
+            if (e.Track is VideoStreamTrack track)
+            {
+                track.OnVideoReceived += tex =>
+                {
+                    Debug.Log("Received video");
+                    receiveImage.texture = tex;
+                    receiveImage.color = Color.white;
+                };
+            }
+            else if (e.Track is AudioStreamTrack audio)
+            {
+
+            }
+        };
+
         RTCConfiguration config = new RTCConfiguration()
         {
             iceServers = new RTCIceServer[]
@@ -89,7 +116,8 @@ public class DataChannelSender : MonoBehaviour
                 //hasReceivedOffer = true;
                 Debug.Log("We got an OFFER" + e.Data);
                 offer = JsonConvert.DeserializeObject<OfferMessage>(e.Data);
-                if (offer.payload.type == "data")
+                //if (offer.payload.type == "data" || offer.payload.type == "media")
+                if (offer.payload.type == "media")
                 {   
                     String rSDP = offer.payload.sdp.sdp;
                     Debug.Log("Remote SDP is " + rSDP);
@@ -102,16 +130,11 @@ public class DataChannelSender : MonoBehaviour
                     };
 
                     // Await the task returned by SetLocalDescription to ensure it's applied
-                   
-
-
                     hasReceivedOffer = true;
 
                     // After this awaits successfully, you can check LocalDescription
                     Debug.Log("RemoteDesc Type " + connection.RemoteDescription.type);
                     Debug.Log("Remote Desc sdp" + connection.RemoteDescription.sdp);
-
-
                 }
             }
             else
@@ -186,11 +209,27 @@ public class DataChannelSender : MonoBehaviour
             dataChannel.OnMessage = bytes =>
             {
                 var message = System.Text.Encoding.UTF8.GetString(bytes);
-                dataTextBox.text += message + Environment.NewLine;
+                if (printMessages)
+                {
+                    if (!peerMessagesTextBox.text.Contains(startText))
+                    {
+                        peerMessagesTextBox.text += startText;
+                    }
+                    peerMessagesTextBox.text += message + Environment.NewLine;
+                }
                 Debug.Log("Message received: " + message);
             };
             string text = "Adam"; // Change this to send any message you want to the other client
             dataChannel.Send(text);
+        };
+
+        connection.OnTrack = (RTCTrackEvent e) =>
+        {
+            Debug.Log("Connection got track");
+            if (e.Track.Kind == TrackKind.Video)
+            {
+                remoteStream.AddTrack(e.Track);
+            }
         };
     }
 
@@ -200,8 +239,6 @@ public class DataChannelSender : MonoBehaviour
 
         // Wait for the operation to complete
         yield return setDescOp;
-
-       
 
         // After setting the remote description, continue your logic
         Debug.Log("Remote description set successfully.");

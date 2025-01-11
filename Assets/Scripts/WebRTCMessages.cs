@@ -2,14 +2,11 @@ using System;
 using TMPro;
 using UnityEngine;
 
-public class ConnectionMessages : MonoBehaviour
+public class WebRTCMessages : MonoBehaviour
 {
     [SerializeField] private TextMeshProUGUI logTextBox;
-
-    private void Start()
-    {
-        Debug.Log("Started up logging.");
-    }
+    [SerializeField] private bool printMessages;
+    private string startText = "WebRTC Messages:\n";
 
     private void OnEnable()
     {
@@ -23,6 +20,12 @@ public class ConnectionMessages : MonoBehaviour
 
     private void HandleLog(string logString, string stackTrace, LogType type)
     {
-        logTextBox.text += logString + Environment.NewLine;
+        if (printMessages)
+        {
+            if (!logTextBox.text.Contains(startText)) {
+                logTextBox.text += startText;
+            }
+            logTextBox.text += logString + Environment.NewLine;
+        }
     }
 }
