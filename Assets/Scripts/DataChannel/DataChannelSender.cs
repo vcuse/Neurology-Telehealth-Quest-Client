@@ -4,7 +4,6 @@ using Unity.WebRTC;
 using UnityEngine;
 using System;
 using WebSocketSharp;
-using static OVRHaptics;
 using System.Threading;
 using TMPro;
 using UnityEngine.UI;

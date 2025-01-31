@@ -9,10 +9,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7a1762186822e43a7a4a471f83f53761, type: 3}
-  m_Name: NRProjectConfig
+  m_Script: {fileID: 11500000, guid: 3ed81adbdfa8b1d40af4f43685818fb5, type: 3}
+  m_Name: NRLibraryStripConfig
   m_EditorClassIdentifier: 
-  targetDevices: 0200000001000000
-  supportMultiResume: 1
-  licenseAsset: {fileID: 0}
-  enableNativeSessionManager: 0
+  StripBaseApi: 0
+  StripDualAgentTracking: 0
+  StripHandTracking: 0
+  StripImageTracking: 0
+  StripMeshing: 0
+  StripSpatialAnchor: 0
